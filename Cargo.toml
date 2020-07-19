@@ -1,6 +1,6 @@
 [package]
 name = "fuzzr"
-version = "0.2.0"
+version = "0.2.4"
 authors = ["Joakim Repomaa <mail@j.repomaa.com>"]
 edition = "2018"
 description = "An incredibly fast fuzzy search utilizing rust compiled to wasm"
@@ -11,9 +11,9 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-fuzzy-matcher = "0.3.5"
-wasm-bindgen = "0.2.65"
-js-sys = "0.3.42"
+fuzzy-matcher = "0.3"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
 [dependencies.web-sys]
-version = "0.3.42"
+version = "0.3"
 features = ['console']
