@@ -6,7 +6,10 @@ extern crate fuzzy_matcher;
 use std::collections::BTreeSet;
 use std::cmp::Ordering;
 use wasm_bindgen::prelude::*;
-use fuzzy_matcher::skim::{fuzzy_match, fuzzy_indices};
+use fuzzy_matcher::{
+    FuzzyMatcher,
+    skim::SkimMatcherV2,
+};
 
 pub struct SearchResultItem {
   item: String,
@@ -43,12 +46,13 @@ pub struct FuzzrOptions {
 pub struct Fuzzr {
   items: Vec<String>,
   options: FuzzrOptions,
+  matcher: SkimMatcherV2,
 }
 
 #[wasm_bindgen]
 impl Fuzzr {
-  pub fn matches(string: &str, query: &str) -> bool {
-    match fuzzy_match(string, query) {
+  pub fn matches(&self, string: &str, query: &str) -> bool {
+    match self.matcher.fuzzy_match(string, query) {
       Some(_) => true,
       None => false
     }
@@ -86,7 +90,8 @@ impl Fuzzr {
       items,
       options: FuzzrOptions {
         surround_matches_with
-      }
+      },
+      matcher: SkimMatcherV2::default(),
     }
   }
 
@@ -121,7 +126,7 @@ impl Fuzzr {
     let mut results: BTreeSet<SearchResultItem> = BTreeSet::new();
 
     for (index, item) in self.items.iter().enumerate() {
-      match fuzzy_indices(item.as_str(), query.as_str()) {
+      match self.matcher.fuzzy_indices(item.as_str(), query.as_str()) {
         Some((score, indices)) => {
           results.insert(SearchResultItem {
             item: item.clone(),
