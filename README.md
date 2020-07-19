@@ -11,21 +11,29 @@ skim command line search. The algorithm is provided by the
 ``` js
 const Fuzzr = (await import('fuzzr')).Fuzzr
 
-const collection = ['Apple', 'Orange', 'Pineapple', 'Pear']
+const collection = [
+  { name: 'Apple' },
+  { name: 'Orange' },
+  { name: 'Pineapple' },
+  { name: 'Pear' }
+]
+
 const fuzzr = new Fuzzr(collection, {
-  surroundResultsWith: ['<strong>', '</strong>']
+  surroundResultsWith: ['<strong>', '</strong>'],
+  // only necessary when not passing a collection of Strings:
+  toString: ({ name }) => name,
 })
 
 fuzzr.search('Ale')
 /*
 [
   {
-    item: 'Apple',
+    item: { name: 'Apple' },
     score: 42,
     formatted: '<strong>A</strong>pp<strong>le</strong>'
   },
   {
-    item: 'Pineapple',
+    item: { name: 'Pineapple' },
     score: 42,
     formatted: 'Pine<strong>a</strong>pp<strong>le</strong>'
   }

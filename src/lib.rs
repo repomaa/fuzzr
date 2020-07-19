@@ -13,7 +13,7 @@ use fuzzy_matcher::{
 };
 
 pub struct SearchResultItem {
-  item: String,
+  item: JsValue,
   index: usize,
   pub score: i64,
   formatted: String
@@ -41,44 +41,59 @@ impl Ord for SearchResultItem {
 
 #[derive(Default)]
 pub struct Options {
-  surround_matches_with: Option<(String, String)>
+  surround_matches_with: Option<(String, String)>,
+  to_string: Option<js_sys::Function>,
 }
 
 impl TryFrom<&js_sys::Object> for Options {
   type Error = JsValue;
 
   fn try_from(object: &js_sys::Object) -> Result<Self, Self::Error> {
-    let js_value = js_sys::Reflect::get(
+    let surround_matches = js_sys::Reflect::get(
         &object, &"surroundMatchesWith".into()
     )?;
+    let to_string = js_sys::Reflect::get(&object, &"toString".into())?;
 
-    const ERROR: &str = "surroundMatchesWith must be an array of exactly two strings";
+    const SURROUND_MATCHES_ERROR: &str = "surroundMatchesWith must be an array of exactly two strings";
 
-    let js_array: js_sys::Array = match js_value.is_undefined() {
-      true => return Ok(Self::default()),
-      false => match js_sys::Array::is_array(&js_value) {
-        true => js_value.into(),
-        false => return Err(ERROR.into()),
+    let surround_matches: Option<js_sys::Array> = match surround_matches.is_undefined() {
+      true => Ok(None),
+      false => match js_sys::Array::is_array(&surround_matches) {
+        true => Ok(Some(surround_matches.into())),
+        false => Err(SURROUND_MATCHES_ERROR),
       }
-    };
-
-    let surround_matches_with = match js_array.length() {
-      2 => {
-        let begin = js_array.shift().as_string().ok_or(ERROR)?;
-        let end = js_array.shift().as_string().ok_or(ERROR)?;
-        Ok((begin, end))
-      },
-      _ => Err(ERROR)
     }?;
 
-    Ok(Options { surround_matches_with: Some(surround_matches_with) })
+    let surround_matches_with = match surround_matches {
+      Some(array) => match array.length() {
+        2 => {
+          let begin = array.shift().as_string().ok_or(SURROUND_MATCHES_ERROR)?;
+          let end = array.shift().as_string().ok_or(SURROUND_MATCHES_ERROR)?;
+          Ok(Some((begin, end)))
+        },
+        _ => Err(SURROUND_MATCHES_ERROR)
+      },
+      None => Ok(None)
+    }?;
+
+    const TO_STRING_ERROR: &str = "toString must a function";
+
+    let to_string: Option<js_sys::Function> = match to_string.is_undefined() {
+      true => Ok(None),
+      false => match to_string.is_function() {
+        true => Ok(Some(to_string.into())),
+        false => Err(TO_STRING_ERROR),
+      },
+    }?;
+
+    Ok(Options { surround_matches_with, to_string })
   }
 
 }
 
 #[wasm_bindgen]
 pub struct Fuzzr {
-  items: Vec<String>,
+  items: JsValue,
   options: Options,
   matcher: SkimMatcherV2,
 }
@@ -86,16 +101,7 @@ pub struct Fuzzr {
 #[wasm_bindgen]
 impl Fuzzr {
   #[wasm_bindgen(constructor)]
-  pub fn new(js_items: &JsValue, options: Option<js_sys::Object>) -> Result<Fuzzr, JsValue> {
-    let iterator = js_sys::try_iter(js_items)?.ok_or("Items must be iterable")?;
-
-    let mut items = Vec::<String>::new();
-
-    for item in iterator {
-      let item = item?;
-      items.push(item.as_string().ok_or("Items must be strings")?)
-    }
-
+  pub fn new(items: JsValue, options: Option<js_sys::Object>) -> Result<Fuzzr, JsValue> {
     let options = options.map_or(Ok(Options::default()), |v| Options::try_from(&v))?;
 
     let instance = Fuzzr {
@@ -130,17 +136,27 @@ impl Fuzzr {
     Some(result)
   }
 
-  pub fn search(&mut self, query: String) -> js_sys::Array {
+  pub fn search(&mut self, query: String) -> Result<js_sys::Array, JsValue> {
+    let iterator = js_sys::try_iter(&self.items)?.ok_or("Items must be iterable")?;
+
     let mut results: BTreeSet<SearchResultItem> = BTreeSet::new();
 
-    for (index, item) in self.items.iter().enumerate() {
-      match self.matcher.fuzzy_indices(item.as_str(), query.as_str()) {
+    for (index, item) in iterator.into_iter().enumerate() {
+      let item = item?;
+      let text: String = match &self.options.to_string {
+        Some(to_string) => to_string.call1(&JsValue::null(), &item)?
+          .as_string()
+          .ok_or("toString function must return a string"),
+        None => item.as_string().ok_or("no toString function provided and item is not a string")
+      }?;
+
+      match self.matcher.fuzzy_indices(text.as_str(), query.as_str()) {
         Some((score, indices)) => {
           results.insert(SearchResultItem {
-            item: item.clone(),
+            item,
             index: index,
             score,
-            formatted: self.format(&item.as_str(), &indices).unwrap_or(item.into())
+            formatted: self.format(&text.as_str(), &indices).unwrap_or(text.into())
           });
         },
         None => ()
@@ -164,6 +180,6 @@ impl Fuzzr {
       js_array.push(&object);
     }
 
-    js_array
+    Ok(js_array)
   }
 }
